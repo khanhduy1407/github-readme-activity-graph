@@ -1,8 +1,8 @@
-import { graphStyle } from '../styles/graphStyle';
-import { pointAnimation, lineAnimation } from '../styles/graphAnimation';
-import { graphArgs } from '../interfaces/interface';
+import { graphStyle } from './styles/graphStyle';
+import { pointAnimation, lineAnimation } from './styles/graphAnimation';
+import { GraphArgs } from './interfaces/interface';
 
-export const graphSvg = (props: graphArgs) => `
+export const graphSvg = (props: GraphArgs) => `
     <svg
         width="${props.width}"
         height="${props.height}"
@@ -10,11 +10,9 @@ export const graphSvg = (props: graphArgs) => `
         fill="none"
         xmlns="http://www.w3.org/2000/svg">
             <rect xmlns="http://www.w3.org/2000/svg" data-testid="card_bg" id="cardBg"
-            x="0" y="0" rx="2.5" height="100%" stroke="#E4E2E2" fill-opacity="1"
-            width="100%" fill="#${
-              props.colors.bgColor
-            }" stroke-opacity="1" style="stroke:#${
-  props.colors.borderColor
+            x="0" y="0" rx="${props.radius}" height="100%" stroke="#E4E2E2" fill-opacity="1"
+            width="100%" fill="#${props.colors.bgColor}" stroke-opacity="1" style="stroke:#${
+    props.colors.borderColor
 }; stroke-width:1;"/>
 
             <style>
@@ -22,19 +20,20 @@ export const graphSvg = (props: graphArgs) => `
                     font: 600 18px 'Segoe UI', Ubuntu, Sans-Serif;
                 }
                 .header {
-                    font: 600 18px 'Segoe UI', Ubuntu, Sans-Serif;
+                    font: 600 20px 'Segoe UI', Ubuntu, Sans-Serif;
                     text-align: center;
-                    color: #${props.colors.color};
+                    color: #${props.colors.titleColor ?? props.colors.color};
                     margin-top: 20px;
                 }
                 svg {
                     font: 600 18px 'Segoe UI', Ubuntu, Sans-Serif;
+                    user-select: none;
                 }
                 ${graphStyle(
-                  props.colors.color,
-                  props.colors.lineColor,
-                  props.colors.pointColor,
-                  props.colors.areaColor
+                    props.colors.color,
+                    props.colors.lineColor,
+                    props.colors.pointColor,
+                    props.colors.areaColor
                 )}
                 ${pointAnimation()}
                 ${lineAnimation()}

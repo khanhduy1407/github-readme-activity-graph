@@ -1,90 +1,94 @@
-import axios from 'axios';
+import axios, { AxiosResponse } from 'axios';
 import * as dotenv from 'dotenv';
-import {
-  query,
-  userDetails,
-  week,
-  contributionCount,
-} from '../interfaces/interface';
-import { fetchContribution, fetcher, gqlQuery } from '../types/types';
+import moment from 'moment';
+import { Query, UserDetails, Week, ContributionDay, ResponseOfApi } from 'src/interfaces/interface';
 
 dotenv.config();
 
-//GraphQl query to get everyday contributions as a response
-export const graphqlQuery: gqlQuery = (username: string) => {
-  return {
-    query: `
-      query userInfo($LOGIN: String!) {
-       user(login: $LOGIN) {
-         name
-         contributionsCollection {
-           contributionCalendar {
-              totalContributions
-              weeks {
-                contributionDays {
-                  contributionCount
+export class Fetcher {
+    constructor(private readonly username: string) {}
+
+    private getGraphQLQuery(from: string, to: string) {
+        return {
+            query: `
+              query userInfo($LOGIN: String!, $FROM: DateTime!, $TO: DateTime!) {
+                user(login: $LOGIN) {
+                  name
+                  contributionsCollection(from: $FROM, to: $TO) {
+                    contributionCalendar {
+                      weeks {
+                        contributionDays {
+                          contributionCount
+                          date
+                        }
+                      }
+                    }
+                  }
                 }
               }
-            }
-          }
-        }
-      },
-    `,
-    variables: {
-      LOGIN: username,
-    },
-  };
-};
-
-const token: string | undefined = process.env.TOKEN;
-
-const headers = {
-  Authorization: `bearer ${token}`,
-};
-
-//Fetching data from GitHub GraphQl API
-export const fetch: fetcher = (data: query) =>
-  axios({
-    url: 'https://api.github.com/graphql',
-    method: 'POST',
-    headers,
-    data,
-  });
-
-export const fetchContributions: fetchContribution = async (
-  username: string,
-  graphqlQuery: gqlQuery, //Dependency Injection
-  fetch: fetcher
-) => {
-  try {
-    const apiResponse = await fetch(graphqlQuery(username));
-    if (apiResponse.data.data.user === null)
-      return `Can't fetch any contribution. Please check your username 😬`;
-    else {
-      const userData: userDetails = {
-        contributions: [],
-        name: apiResponse.data.data.user.name,
-      };
-      //filtering the week data from API response
-      const weeks: week[] =
-        apiResponse.data.data.user.contributionsCollection.contributionCalendar
-          .weeks;
-      //slicing last 6 weeks
-      weeks.slice(weeks.length - 6, weeks.length).map((week: week) =>
-        week.contributionDays.map((contributionCount: contributionCount) => {
-          userData.contributions.push(contributionCount.contributionCount);
-        })
-      );
-
-      //returning data of last 31 days
-      const presentDay = new Date().getDay();
-      userData.contributions = userData.contributions.slice(
-        5 + presentDay,
-        36 + presentDay
-      );
-      return userData;
+            `,
+            variables: {
+                LOGIN: this.username,
+                FROM: from,
+                TO: to,
+            },
+        };
     }
-  } catch (error) {
-    return error;
-  }
-};
+
+    private async fetch(graphQLQuery: Query): Promise<AxiosResponse<ResponseOfApi>> {
+        return axios({
+            url: 'https://api.github.com/graphql',
+            method: 'POST',
+            headers: {
+                Authorization: `bearer ${process.env.TOKEN}`,
+            },
+            data: graphQLQuery,
+        });
+    }
+
+    public async fetchContributions(): Promise<UserDetails | string> {
+        const now = moment();
+        const from = moment(now).subtract(30, 'days').utc().toISOString();
+        // also include the next day in case our server is behind in time with respect to GitHub
+        const to = moment(now).add(1, 'days').utc().toISOString();
+
+        try {
+            const apiResponse = await this.fetch(this.getGraphQLQuery(from, to));
+            if (apiResponse.data.data.user === null)
+                return `Can't fetch any contribution. Please check your username 😬`;
+            else {
+                const userData: UserDetails = {
+                    contributions: [],
+                    name: apiResponse.data.data.user.name,
+                };
+                //filtering the week data from API response
+                const weeks =
+                    apiResponse.data.data.user.contributionsCollection.contributionCalendar.weeks;
+                // get day-contribution data
+                weeks.map((week: Week) =>
+                    week.contributionDays.map((contributionDay: ContributionDay) => {
+                        contributionDay.date = moment(contributionDay.date, moment.ISO_8601)
+                            .date()
+                            .toString();
+                        userData.contributions.push(contributionDay);
+                    })
+                );
+
+                // if 32nd entry is 0 means:
+                // either the day hasn't really started
+                // or the user hasn't contributed today
+                const length = userData.contributions.length;
+
+                if (userData.contributions[length - 1].contributionCount === 0) {
+                    userData.contributions.pop();
+                }
+                const extra = userData.contributions.length - 31;
+                userData.contributions.splice(0, extra);
+                return userData;
+            }
+        } catch (error) {
+            console.log('error: ', error);
+            return error;
+        }
+    }
+}
